@@ -30,7 +30,6 @@ def do_actual_print(mac_address, text_to_print, qr_code='', logo_hex='', base64_
     if platform != 'android':
         print("Bluetooth print only works on Android!")
         return
-
     try:
         show_toast("Step 1: Starting print process...")
         from jnius import autoclass
