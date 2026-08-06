@@ -44,7 +44,6 @@ def do_actual_print(mac_address, text_to_print, qr_code='', logo_hex='', base64_
             return
             
         if mac_address:
-            show_toast("Step 000: mac address...")
             mac_address = mac_address.strip()
             
         if not mac_address:
