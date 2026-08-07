@@ -30,6 +30,7 @@ def do_actual_print(mac_address, text_to_print, qr_code='', logo_hex='', base64_
     if platform != 'android':
         print("Bluetooth print only works on Android!")
         return
+
     try:
         show_toast("Step 1: Starting print process...")
         from jnius import autoclass
@@ -63,10 +64,13 @@ def do_actual_print(mac_address, text_to_print, qr_code='', logo_hex='', base64_
         socket = device.createRfcommSocketToServiceRecord(MY_UUID)
         
         show_toast("Step 5: Connecting Socket...")
-        socket.connect()        
+        socket.connect()
+        
         show_toast("Step 6: Getting Output Stream...")
-        out_stream = socket.getOutputStream()        
-        show_toast("Step 7: Sending Data...")        
+        out_stream = socket.getOutputStream()
+        
+        show_toast("Step 7: Sending Data...")
+        
         if base64_raw:
             try:
                 import base64
@@ -97,12 +101,14 @@ def do_actual_print(mac_address, text_to_print, qr_code='', logo_hex='', base64_
             
             if qr_code:
                 try:
+                    # Ensure we are on a new line before printing QR code
+                    out_stream.write(b'\x0A')
                     # Center alignment for QR
                     out_stream.write(b'\x1B\x61\x01')
                     # Select QR model 2
                     out_stream.write(b'\x1D\x28\x6B\x04\x00\x31\x41\x32\x00')
-                    # Set module size to 6
-                    out_stream.write(b'\x1D\x28\x6B\x03\x00\x31\x43\x06')
+                    # Set module size to 4 (6 is often too big for 58mm printers)
+                    out_stream.write(b'\x1D\x28\x6B\x03\x00\x31\x43\x04')
                     # Set error correction to M
                     out_stream.write(b'\x1D\x28\x6B\x03\x00\x31\x45\x31')
                     
