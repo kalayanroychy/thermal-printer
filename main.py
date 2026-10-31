@@ -148,13 +148,64 @@ def print_to_bluetooth(mac_address, text_to_print, qr_code='', logo_hex='', base
     # Therefore, we use a standard background thread to run pyjnius printing logic.
     threading.Thread(target=do_actual_print, args=(mac_address, text_to_print, qr_code, logo_hex, base64_raw), daemon=True).start()
 
+def get_android_gps_location():
+    if platform != 'android':
+        return None
+    try:
+        from jnius import autoclass
+        Context = autoclass('android.content.Context')
+        Activity = autoclass('org.kivy.android.PythonActivity').mActivity
+        location_manager = Activity.getSystemService(Context.LOCATION_SERVICE)
+        if location_manager is None:
+            return None
+
+        providers = ['gps', 'network', 'passive']
+        best_loc = None
+        for p in providers:
+            try:
+                if location_manager.isProviderEnabled(p):
+                    loc = location_manager.getLastKnownLocation(p)
+                    if loc is not None:
+                        if best_loc is None or loc.getAccuracy() < best_loc.getAccuracy():
+                            best_loc = loc
+            except:
+                pass
+
+        if best_loc is not None:
+            return {
+                'status': 'ok',
+                'lat': float(best_loc.getLatitude()),
+                'lng': float(best_loc.getLongitude())
+            }
+    except Exception as e:
+        print("GPS Error:", e)
+    return None
+
 class PrintAPIHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
+
+    def do_GET(self):
+        if self.path.startswith('/gps'):
+            loc = get_android_gps_location()
+            self.send_response(200)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            if loc:
+                self.wfile.write(json.dumps(loc).encode('utf-8'))
+            else:
+                self.wfile.write(b'{"status": "unavailable"}')
+        else:
+            self.send_response(200)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(b'{"status": "running", "app": "DhopaMamaApp"}')
 
     def do_POST(self):
         try:
@@ -202,6 +253,8 @@ def run_local_server():
     except Exception as e:
         show_toast(f"Server crash: {str(e)}")
 
+ANDROID_WEBVIEW = None
+
 def open_android_webview(url):
     if platform != 'android':
         return
@@ -212,24 +265,31 @@ def open_android_webview(url):
 
         WebView = autoclass('android.webkit.WebView')
         WebViewClient = autoclass('android.webkit.WebViewClient')
+        WebChromeClient = autoclass('android.webkit.WebChromeClient')
         Activity = autoclass('org.kivy.android.PythonActivity').mActivity
         
         @run_on_ui_thread
         def create_webview():
+            global ANDROID_WEBVIEW
             try:
                 webview = WebView(Activity)
-                webview.getSettings().setJavaScriptEnabled(True)
-                webview.getSettings().setDomStorageEnabled(True)
-                webview.getSettings().setMixedContentMode(0) 
+                settings = webview.getSettings()
+                settings.setJavaScriptEnabled(True)
+                settings.setDomStorageEnabled(True)
+                settings.setGeolocationEnabled(True)
+                settings.setAllowFileAccess(True)
+                settings.setMixedContentMode(0) 
                 
                 # Append custom string to User-Agent to identify the Kivy App
-                current_ua = webview.getSettings().getUserAgentString()
-                webview.getSettings().setUserAgentString(current_ua + " DhopaMamaApp")
+                current_ua = settings.getUserAgentString()
+                settings.setUserAgentString(current_ua + " DhopaMamaApp")
 
                 webview.setWebViewClient(WebViewClient())
+                webview.setWebChromeClient(WebChromeClient())
                 webview.loadUrl(url)
                 
                 Activity.setContentView(webview)
+                ANDROID_WEBVIEW = webview
             except Exception as e:
                 pass
                 
@@ -240,7 +300,7 @@ def open_android_webview(url):
 class PrinterApp(App):
     def build(self):
         layout = BoxLayout(orientation='vertical', padding=50)
-        layout.add_widget(Label(text="Loading DhopaMama... Please wait."))
+        layout.add_widget(Label(text="Loading ধোপা মামা... Please wait."))
         
         server_thread = threading.Thread(target=run_local_server, daemon=True)
         server_thread.start()
@@ -250,19 +310,45 @@ class PrinterApp(App):
     def on_start(self):
         if platform == 'android':
             try:
+                from kivy.core.window import Window
+                Window.bind(on_keyboard=self.on_back_button)
+            except:
+                pass
+
+            try:
                 from android.permissions import request_permissions, Permission
                 request_permissions([
                     Permission.BLUETOOTH_CONNECT,
                     Permission.BLUETOOTH_SCAN,
                     Permission.BLUETOOTH,
                     Permission.BLUETOOTH_ADMIN,
-                    Permission.INTERNET
+                    Permission.INTERNET,
+                    Permission.ACCESS_FINE_LOCATION,
+                    Permission.ACCESS_COARSE_LOCATION,
+                    Permission.CAMERA
                 ])
             except:
                 pass
             
         target_url = "http://103.25.81.14:8401" 
         open_android_webview(target_url)
+
+    def on_back_button(self, window, key, *args):
+        if key == 27 and platform == 'android' and ANDROID_WEBVIEW is not None:
+            try:
+                from android.runnable import run_on_ui_thread
+                @run_on_ui_thread
+                def _go_back():
+                    try:
+                        if ANDROID_WEBVIEW.canGoBack():
+                            ANDROID_WEBVIEW.goBack()
+                    except:
+                        pass
+                _go_back()
+                return True
+            except:
+                pass
+        return False
 
 if __name__ == '__main__':
     PrinterApp().run()
