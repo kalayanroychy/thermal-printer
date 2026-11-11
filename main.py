@@ -258,7 +258,7 @@ ANDROID_WEBVIEW = None
 def open_android_webview(url):
     if platform != 'android':
         return
-
+        
     try:
         from jnius import autoclass
         from android.runnable import run_on_ui_thread
@@ -266,68 +266,8 @@ def open_android_webview(url):
         WebView = autoclass('android.webkit.WebView')
         WebViewClient = autoclass('android.webkit.WebViewClient')
         WebChromeClient = autoclass('android.webkit.WebChromeClient')
-        WebSettings = autoclass('android.webkit.WebSettings')
-        FrameLayout = autoclass('android.widget.FrameLayout')
-        LayoutParams = autoclass('android.widget.FrameLayout$LayoutParams')
-        ProgressBar = autoclass('android.widget.ProgressBar')
-        View = autoclass('android.view.View')
-        Color = autoclass('android.graphics.Color')
         Activity = autoclass('org.kivy.android.PythonActivity').mActivity
-
-        OFFLINE_HTML = (
-            "<html><head><meta name='viewport' content='width=device-width,initial-scale=1'></head>"
-            "<body style='font-family:sans-serif;text-align:center;padding:48px 24px;background:#f5f3ff;color:#312e81'>"
-            "<div style='font-size:56px'>&#128268;</div>"
-            "<h2>No connection</h2>"
-            "<p style='color:#6b7280'>Server is unreachable. Check your internet and try again.</p>"
-            "<a href='" + url + "' style='display:inline-block;margin-top:16px;padding:12px 28px;"
-            "border-radius:999px;background:#4F46E5;color:#fff;text-decoration:none;font-weight:600'>Retry</a>"
-            "</body></html>"
-        )
-
-        state = {'bar': None}
-
-        @run_on_ui_thread
-        def _load(target_url):
-            try:
-                ANDROID_WEBVIEW.loadUrl(target_url)
-            except Exception:
-                pass
-
-        @run_on_ui_thread
-        def _load_offline():
-            try:
-                ANDROID_WEBVIEW.loadDataWithBaseURL(url, OFFLINE_HTML, "text/html", "UTF-8", None)
-            except Exception:
-                pass
-
-        def _check_and_load(*_):
-            # Fast reachability probe so an unreachable server shows a retry page
-            # instead of a blank white screen.
-            def _probe():
-                import socket
-                from urllib.parse import urlparse
-                u = urlparse(url)
-                try:
-                    s = socket.create_connection((u.hostname, u.port or 80), timeout=4)
-                    s.close()
-                    _load(url)
-                except Exception:
-                    _load_offline()
-            threading.Thread(target=_probe, daemon=True).start()
-
-        @run_on_ui_thread
-        def _update_progress(*_):
-            try:
-                bar = state['bar']
-                if bar is None or ANDROID_WEBVIEW is None:
-                    return
-                p = ANDROID_WEBVIEW.getProgress()
-                bar.setProgress(p)
-                bar.setVisibility(View.GONE if p >= 100 else View.VISIBLE)
-            except Exception:
-                pass
-
+        
         @run_on_ui_thread
         def create_webview():
             global ANDROID_WEBVIEW
@@ -339,42 +279,21 @@ def open_android_webview(url):
                 settings.setDatabaseEnabled(True)
                 settings.setGeolocationEnabled(True)
                 settings.setAllowFileAccess(True)
-                settings.setMixedContentMode(0)
-                # Use HTTP cache normally (honours Cache-Control sent by the server)
-                settings.setCacheMode(WebSettings.LOAD_DEFAULT)
-                settings.setLoadsImagesAutomatically(True)
-                settings.setUseWideViewPort(True)
-                settings.setLoadWithOverviewMode(True)
-                # GPU rendering for smoother scrolling
-                webview.setLayerType(View.LAYER_TYPE_HARDWARE, None)
-
+                settings.setMixedContentMode(0) 
+                
                 # Append custom string to User-Agent to identify the Kivy App
                 current_ua = settings.getUserAgentString()
                 settings.setUserAgentString(current_ua + " DhopaMamaApp")
 
                 webview.setWebViewClient(WebViewClient())
                 webview.setWebChromeClient(WebChromeClient())
-
-                # Container: WebView + thin top progress bar
-                container = FrameLayout(Activity)
-                container.addView(webview, LayoutParams(-1, -1))
-                bar = ProgressBar(Activity, None, 16842872)  # android.R.attr.progressBarStyleHorizontal
-                bar.setMax(100)
-                bar.setProgress(5)
-                bar.getProgressDrawable().setColorFilter(
-                    Color.parseColor("#4F46E5"),
-                    autoclass('android.graphics.PorterDuff$Mode').SRC_IN)
-                bar_params = LayoutParams(-1, 8)
-                container.addView(bar, bar_params)
-                state['bar'] = bar
-
-                Activity.setContentView(container)
+                webview.loadUrl(url)
+                
+                Activity.setContentView(webview)
                 ANDROID_WEBVIEW = webview
-                Clock.schedule_interval(_update_progress, 0.25)
-                Clock.schedule_once(_check_and_load, 0)
             except Exception as e:
-                pass
-
+                show_toast(f"Init Error: {str(e)}")
+                
         create_webview()
     except Exception as e:
         show_toast(f"WebView Error: {str(e)}")
@@ -400,7 +319,7 @@ class PrinterApp(App):
 
             try:
                 from android.permissions import request_permissions, Permission
-                request_permissions([
+                perms = [
                     Permission.BLUETOOTH_CONNECT,
                     Permission.BLUETOOTH_SCAN,
                     Permission.BLUETOOTH,
@@ -408,9 +327,13 @@ class PrinterApp(App):
                     Permission.INTERNET,
                     Permission.ACCESS_FINE_LOCATION,
                     Permission.ACCESS_COARSE_LOCATION,
-                    Permission.CAMERA,
-                    "android.permission.POST_NOTIFICATIONS"
-                ])
+                    Permission.CAMERA
+                ]
+                try:
+                    perms.append(Permission.POST_NOTIFICATIONS)
+                except:
+                    perms.append("android.permission.POST_NOTIFICATIONS")
+                request_permissions(perms)
             except:
                 pass
             
