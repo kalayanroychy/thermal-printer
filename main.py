@@ -408,7 +408,8 @@ class PrinterApp(App):
                     Permission.INTERNET,
                     Permission.ACCESS_FINE_LOCATION,
                     Permission.ACCESS_COARSE_LOCATION,
-                    Permission.CAMERA
+                    Permission.CAMERA,
+                    "android.permission.POST_NOTIFICATIONS"
                 ])
             except:
                 pass
